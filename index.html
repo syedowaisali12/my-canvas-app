@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>My Canvas App</title>
+    <style>
+        body {
+            font-family: 'Salesforce Sans', Arial, sans-serif;
+            margin: 20px;
+            background-color: #f3f3f3;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 800px;
+        }
+        .header {
+            color: #0176d3;
+            border-bottom: 2px solid #0176d3;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .info-section {
+            margin: 15px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #0176d3;
+        }
+        .button {
+            background-color: #0176d3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background-color: #014486;
+        }
+        .error {
+            color: #d73c3c;
+            background-color: #fdf2f2;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #2e7d32;
+            background-color: #f1f8e9;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="header">My First Canvas App</h1>
+        
+        <div class="info-section">
+            <h3>Canvas Context Information</h3>
+            <div id="contextInfo">Loading canvas context...</div>
+        </div>
+        
+        <div class="info-section">
+            <h3>Available Actions</h3>
+            <button class="button" onclick="getCurrentUser()">Get Current User</button>
+            <button class="button" onclick="queryAccounts()">Query Accounts</button>
+            <button class="button" onclick="resizeCanvas()">Resize Canvas</button>
+            <button class="button" onclick="navigateToRecord()">Navigate to Account</button>
+        </div>
+        
+        <div id="messages"></div>
+        <div id="output"></div>
+    </div>
+
+    <!-- Salesforce Canvas SDK -->
+    <script src="https://login.salesforce.com/canvas/sdk/js/publisher/canvassdk.js"></script>
+    
+    <script>
+        let sfContext = null;
+        let accessToken = null;
+        
+        // Initialize the canvas app
+        Sfdc.canvas.publisher.subscribe({
+            name: 'canvas.context',
+            onData: function(context) {
+                sfContext = context;
+                accessToken = context.client.oauthToken;
+                displayContextInfo(context);
+                showMessage('Canvas app initialized successfully!', 'success');
+            }
+        });
+        
+        // Auto-resize the canvas
+        Sfdc.canvas.publisher.publish({
+            name: 'canvas.resize',
+            payload: {height: document.body.scrollHeight}
+        });
+        
+        function displayContextInfo(context) {
+            const contextDiv = document.getElementById('contextInfo');
+            const info = `
+                <strong>User:</strong> ${context.user.fullName} (${context.user.email})<br>
+                <strong>Organization:</strong> ${context.organization.name}<br>
+                <strong>Organization ID:</strong> ${context.organization.organizationId}<br>
+                <strong>User ID:</strong> ${context.user.userId}<br>
+                <strong>Instance URL:</strong> ${context.client.instanceUrl}<br>
+                <strong>API Version:</strong> ${context.client.apiVersion}
+            `;
+            contextDiv.innerHTML = info;
+        }
+        
+        function getCurrentUser() {
+            if (!sfContext) {
+                showMessage('Canvas context not available', 'error');
+                return;
+            }
+            
+            const userInfo = {
+                name: sfContext.user.fullName,
+                email: sfContext.user.email,
+                userId: sfContext.user.userId,
+                profileId: sfContext.user.profileId,
+                roleId: sfContext.user.roleId,
+                language: sfContext.user.language,
+                timeZone: sfContext.user.timeZone
+            };
+            
+            displayOutput('Current User Information:', JSON.stringify(userInfo, null, 2));
+        }
+        
+        function queryAccounts() {
+            if (!accessToken || !sfContext) {
+                showMessage('Authentication not available', 'error');
+                return;
+            }
+            
+            const query = "SELECT Id, Name, Type, Industry FROM Account LIMIT 5";
+            const url = `${sfContext.client.instanceUrl}/services/data/v${sfContext.client.apiVersion}/query/?q=${encodeURIComponent(query)}`;
+            
+            fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + accessToken,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.records) {
+                    displayOutput('Account Query Results:', JSON.stringify(data.records, null, 2));
+                    showMessage(`Found ${data.records.length} accounts`, 'success');
+                } else {
+                    showMessage('No accounts found or query failed', 'error');
+                    displayOutput('Error:', JSON.stringify(data, null, 2));
+                }
+            })
+            .catch(error => {
+                showMessage('Error querying accounts: ' + error.message, 'error');
+                console.error('Query error:', error);
+            });
+        }
+        
+        function resizeCanvas() {
+            const newHeight = document.body.scrollHeight + 100;
+            Sfdc.canvas.publisher.publish({
+                name: 'canvas.resize',
+                payload: {height: newHeight}
+            });
+            showMessage(`Canvas resized to ${newHeight}px height`, 'success');
+        }
+        
+        function navigateToRecord() {
+            // This would navigate to the first account (you'd typically get this from a query)
+            Sfdc.canvas.publisher.publish({
+                name: 'canvas.navigate',
+                payload: {
+                    url: '/lightning/o/Account/list'
+                }
+            });
+        }
+        
+        function showMessage(message, type) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = type;
+            messageDiv.textContent = message;
+            messagesDiv.appendChild(messageDiv);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (messageDiv.parentNode) {
+                    messageDiv.parentNode.removeChild(messageDiv);
+                }
+            }, 5000);
+        }
+        
+        function displayOutput(title, content) {
+            const outputDiv = document.getElementById('output');
+            outputDiv.innerHTML = `<strong>${title}</strong>\n${content}`;
+        }
+        
+        // Handle canvas resize automatically
+        window.addEventListener('resize', function() {
+            Sfdc.canvas.publisher.publish({
+                name: 'canvas.resize',
+                payload: {height: document.body.scrollHeight}
+            });
+        });
+    </script>
+</body>
+</html>
