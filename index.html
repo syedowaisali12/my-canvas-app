@@ -91,28 +91,112 @@
         let sfContext = null;
         let accessToken = null;
         
-        // Initialize the canvas app with OAuth flow
-        Sfdc.canvas.publisher.subscribe({
-            name: 'canvas.context',
-            onData: function(context) {
-                sfContext = context;
-                accessToken = context.client.oauthToken;
-                displayContextInfo(context);
-                showMessage('Canvas app initialized successfully!', 'success');
+        // Wait for SDK to load and initialize
+        function initializeCanvas() {
+            console.log('Initializing Canvas SDK...');
+            
+            if (typeof Sfdc !== 'undefined' && Sfdc.canvas) {
+                console.log('Canvas SDK loaded successfully');
+                
+                // For OAuth Webflow - get context directly
+                Sfdc.canvas.client.ctx(function(context) {
+                    console.log('Canvas context received:', context);
+                    if (context && context.client) {
+                        sfContext = context;
+                        accessToken = context.client.oauthToken;
+                        displayContextInfo(context);
+                        showMessage('Canvas app initialized successfully!', 'success');
+                    } else {
+                        console.error('Invalid context received:', context);
+                        showMessage('Failed to get canvas context', 'error');
+                        // Try alternative method
+                        tryAlternativeInit();
+                    }
+                }, Sfdc.canvas.publisher);
+                
+                // Auto-resize
+                Sfdc.canvas.client.resize();
+                
+            } else {
+                console.error('Canvas SDK not available');
+                showMessage('Canvas SDK not loaded. Retrying...', 'error');
+                // Retry after a delay
+                setTimeout(initializeCanvas, 1000);
             }
-        });
-        
-        // Alternative initialization for OAuth webflow
-        if (typeof Sfdc !== 'undefined' && Sfdc.canvas) {
-            Sfdc.canvas.publisher.subscribe({
-                name: 'canvas.oauth',
-                onData: function(oauth) {
-                    accessToken = oauth.access_token;
-                    // Get context after OAuth
-                    getCanvasContext();
-                }
-            });
         }
+        
+        // Alternative initialization method
+        function tryAlternativeInit() {
+            console.log('Trying alternative initialization...');
+            
+            // Try to get context from URL parameters or parent window
+            if (window.location.search) {
+                const urlParams = new URLSearchParams(window.location.search);
+                console.log('URL parameters:', urlParams.toString());
+            }
+            
+            // Try parent window communication
+            if (window.parent && window.parent !== window) {
+                console.log('Requesting context from parent window...');
+                window.parent.postMessage({type: 'canvas.getContext'}, '*');
+                
+                // Listen for response
+                window.addEventListener('message', function(event) {
+                    console.log('Received message:', event.data);
+                    if (event.data && event.data.type === 'canvas.context') {
+                        sfContext = event.data.context;
+                        accessToken = event.data.context.client.oauthToken;
+                        displayContextInfo(event.data.context);
+                        showMessage('Canvas context received from parent!', 'success');
+                    }
+                }, false);
+            }
+            
+            // Create mock context for testing
+            setTimeout(() => {
+                if (!sfContext) {
+                    console.log('Creating mock context for testing...');
+                    createMockContext();
+                }
+            }, 3000);
+        }
+        
+        // Create mock context for testing purposes
+        function createMockContext() {
+            sfContext = {
+                user: {
+                    fullName: 'Test User',
+                    email: 'test@example.com',
+                    userId: '005000000000000',
+                    profileId: '00e000000000000',
+                    roleId: '00E000000000000',
+                    language: 'en_US',
+                    timeZone: 'GMT'
+                },
+                organization: {
+                    name: 'Test Organization',
+                    organizationId: '00D000000000000'
+                },
+                client: {
+                    instanceUrl: 'https://test.salesforce.com',
+                    apiVersion: '60.0',
+                    oauthToken: 'mock_token'
+                }
+            };
+            
+            displayContextInfo(sfContext);
+            showMessage('Using mock context for testing (Canvas not properly initialized)', 'error');
+        }
+        
+        // Initialize when page loads
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeCanvas);
+        } else {
+            initializeCanvas();
+        }
+        
+        // Also try after a delay to ensure SDK is loaded
+        setTimeout(initializeCanvas, 500);
         
         // Auto-resize the canvas
         Sfdc.canvas.publisher.publish({
@@ -134,22 +218,35 @@
         }
         
         function getCurrentUser() {
+            console.log('getCurrentUser called');
+            console.log('sfContext:', sfContext);
+            console.log('accessToken:', accessToken);
+            
             if (!sfContext) {
-                showMessage('Canvas context not available', 'error');
+                showMessage('Canvas context not available. Trying to reinitialize...', 'error');
+                // Try to reinitialize
+                initializeCanvas();
                 return;
             }
             
-            const userInfo = {
-                name: sfContext.user.fullName,
-                email: sfContext.user.email,
-                userId: sfContext.user.userId,
-                profileId: sfContext.user.profileId,
-                roleId: sfContext.user.roleId,
-                language: sfContext.user.language,
-                timeZone: sfContext.user.timeZone
-            };
-            
-            displayOutput('Current User Information:', JSON.stringify(userInfo, null, 2));
+            try {
+                const userInfo = {
+                    name: sfContext.user.fullName,
+                    email: sfContext.user.email,
+                    userId: sfContext.user.userId,
+                    profileId: sfContext.user.profileId,
+                    roleId: sfContext.user.roleId,
+                    language: sfContext.user.language,
+                    timeZone: sfContext.user.timeZone
+                };
+                
+                displayOutput('Current User Information:', JSON.stringify(userInfo, null, 2));
+                showMessage('User information retrieved successfully!', 'success');
+            } catch (error) {
+                console.error('Error getting user info:', error);
+                showMessage('Error retrieving user information: ' + error.message, 'error');
+                displayOutput('Context Debug:', JSON.stringify(sfContext, null, 2));
+            }
         }
         
         function queryAccounts() {
