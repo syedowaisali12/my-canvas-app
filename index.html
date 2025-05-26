@@ -91,7 +91,7 @@
         let sfContext = null;
         let accessToken = null;
         
-        // Initialize the canvas app
+        // Initialize the canvas app with OAuth flow
         Sfdc.canvas.publisher.subscribe({
             name: 'canvas.context',
             onData: function(context) {
@@ -101,6 +101,18 @@
                 showMessage('Canvas app initialized successfully!', 'success');
             }
         });
+        
+        // Alternative initialization for OAuth webflow
+        if (typeof Sfdc !== 'undefined' && Sfdc.canvas) {
+            Sfdc.canvas.publisher.subscribe({
+                name: 'canvas.oauth',
+                onData: function(oauth) {
+                    accessToken = oauth.access_token;
+                    // Get context after OAuth
+                    getCanvasContext();
+                }
+            });
+        }
         
         // Auto-resize the canvas
         Sfdc.canvas.publisher.publish({
